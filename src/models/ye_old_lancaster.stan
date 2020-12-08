@@ -67,6 +67,28 @@ functions {
 
     return dydt;
   }
+
+  real[ , ] integrate_ode_explicit_trapezoidal(real[] initial_state, real initial_time, real[] times, real[] params, real[] real_data, int[] integer_data) {
+    real h;
+    vector[size(initial_state)] dstate_dt_initial_time;
+    vector[size(initial_state)] dstate_dt_tidx;
+    vector[size(initial_state)] k;
+    real state_estimate[size(times),size(initial_state)];
+
+    h = times[1] - initial_time;
+    dstate_dt_initial_time = to_vector(det_SEIR_meta(initial_time, initial_state, params, real_data, integer_data));
+    k = h*dstate_dt_initial_time;
+    state_estimate[1,] = to_array_1d(to_vector(initial_state) + h*(dstate_dt_initial_time + to_vector(det_SEIR_meta(times[1], to_array_1d(to_vector(initial_state)+k), params, real_data, integer_data)))/2);
+
+    for (tidx in 1:size(times)-1) {
+      h = (times[tidx+1] - times[tidx]);
+      dstate_dt_tidx = to_vector(det_SEIR_meta(times[tidx], state_estimate[tidx], params, real_data, integer_data));
+      k = h*dstate_dt_tidx;
+      state_estimate[tidx+1,] = to_array_1d(to_vector(state_estimate[tidx,]) + h*(dstate_dt_tidx + to_vector(det_SEIR_meta(times[tidx+1], to_array_1d(to_vector(state_estimate[tidx,])+k), params, real_data, integer_data)))/2);
+    }
+
+    return state_estimate;
+  }
 }
 data {
   int<lower=1> T;
@@ -103,11 +125,7 @@ model {
   theta[2] = beta3;
   theta[3] = gamma;
 
-  real rel_tol = 1e-3;
-  real abs_tol = 1e-6;
-  real max_steps = 1e8;
-  real y_hat[T,10336] = integrate_ode_rk45(det_SEIR_meta, y0, t0, ts, theta, x_r, x_i, rel_tol, abs_tol, max_steps);
-  y_hat = to_array_2d(to_matrix(y_hat)*(1.0-2.0*abs_tol) + abs_tol);
+  real y_hat[T,10336] = integrate_ode_explicit_trapezoidal(y0, t0, ts, theta, x_r, x_i);
 
   vector[T+1] removed_total; 
   removed_total[1] = sum(y0[ridxs]);
